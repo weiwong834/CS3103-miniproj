@@ -6,4 +6,5 @@ CHANNEL_UNRELIABLE = 1
 CHANNEL_ACK = 2  # ACK packet type
 RETRANSMIT_TIMEOUT = 0.2  # 200ms
 MAX_RETRANSMITS = 3  # Maximum retry attempts
-REORDER_BUFFER_SIZE = 100  # Max out-of-order packets to buffer 
+REORDER_BUFFER_SIZE = 100  # Max out-of-order packets to buffer
+REORDER_TIMEOUT = 0.2  # 200ms - Skip missing packet after this threshold (t from spec) 

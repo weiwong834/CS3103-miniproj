@@ -125,6 +125,14 @@ class GameNetAPI:
                             print(f"[RECV] #{packet.seq_no} UNRELIABLE: {packet.payload[:30]}... ({latency:.1f}ms)")
 
             except socket.timeout:
+                # Check for reorder timeout periodically
+                timeout_packets = self.reorder_buffer.check_timeout()
+                if timeout_packets:
+                    with self.buffer_lock:
+                        for p in timeout_packets:
+                            self.receive_buffer.append(p)
+                            self.metrics['reliable_received'] += 1
+                            print(f"[RECV] #{p.seq_no} RELIABLE (after timeout): {p.payload[:30]}...")
                 continue
             except Exception as e:
                 if self.running:
