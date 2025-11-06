@@ -75,7 +75,7 @@ class ReliableChannel:
                     packet.acked = True
                     rtt = (time.time() - packet.send_time) * 1000
                     self.stats['acked'] += 1
-                    print(f"[ACK] Received ACK for packet #{seq_no} (RTT: {rtt:.1f}ms)")
+                    print(f"[ACK] Received ACK for packet R#{seq_no} (RTT: {rtt:.1f}ms)")
                     # Remove from pending
                     del self.pending_packets[seq_no]
 
@@ -99,7 +99,7 @@ class ReliableChannel:
                             packets_to_retry.append(packet)
                         else:
                             # Max retries reached, give up
-                            print(f"[RETRANSMIT] Packet #{seq_no} failed after {MAX_RETRANSMITS} retries")
+                            print(f"[RETRANSMIT] Packet R#{seq_no} failed after {MAX_RETRANSMITS} retries")
                             self.stats['failed'] += 1
                             del self.pending_packets[seq_no]
 
@@ -121,10 +121,10 @@ class ReliableChannel:
             self.socket.sendto(packet.packet_data, packet.destination)
             self.stats['retransmitted'] += 1
             self.stats['total_retries'] += 1
-            print(f"[RETRANSMIT] Packet #{packet.seq_no} lost, attempt {packet.retry_count}/{MAX_RETRANSMITS} "
+            print(f"[RETRANSMIT] Packet R#{packet.seq_no} lost, attempt {packet.retry_count}/{MAX_RETRANSMITS} "
                   f"({RETRANSMIT_TIMEOUT * 1000:.0f}ms timeout)")
         except Exception as e:
-            print(f"[RETRANSMIT] Error resending packet #{packet.seq_no}: {e}")
+            print(f"[RETRANSMIT] Error resending packet R#{packet.seq_no}: {e}")
 
     def get_stats(self) -> dict:
         """Get channel statistics"""
