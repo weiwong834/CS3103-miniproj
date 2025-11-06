@@ -16,7 +16,10 @@ class GameNetAPI:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind((host, port))
         self.socket.settimeout(0.1)
-        self.next_seq = 0
+
+        # Separate sequence numbers for reliable and unreliable channels
+        self.reliable_seq = 0
+        self.unreliable_seq = 0
 
         # Reliability components
         self.reliable_channel = ReliableChannel(self.socket)
@@ -52,7 +55,16 @@ class GameNetAPI:
             reliable: If True, use reliable channel with ACK/retransmit
         """
         channel = CHANNEL_RELIABLE if reliable else CHANNEL_UNRELIABLE
-        packet = GamePacket(channel, self.next_seq, data, timestamp)
+
+        # Use separate sequence numbers for reliable and unreliable
+        if reliable:
+            seq_no = self.reliable_seq
+            self.reliable_seq = (self.reliable_seq + 1) % 65536
+        else:
+            seq_no = self.unreliable_seq
+            self.unreliable_seq = (self.unreliable_seq + 1) % 65536
+
+        packet = GamePacket(channel, seq_no, data, timestamp)
         packet_bytes = packet.to_bytes()
 
         # Send the packet
@@ -60,14 +72,12 @@ class GameNetAPI:
 
         # Track for retransmission if reliable
         if reliable:
-            self.reliable_channel.track_packet(packet_bytes, self.next_seq, (self.host, self.target_port))
+            self.reliable_channel.track_packet(packet_bytes, seq_no, (self.host, self.target_port))
             self.metrics['reliable_sent'] += 1
-            print(f"[SEND] #{self.next_seq} RELIABLE: {data[:30]}... (tracked for ACK)")
+            print(f"[SEND] R#{seq_no} RELIABLE: {data[:30]}... (tracked for ACK)")
         else:
             self.metrics['unreliable_sent'] += 1
-            print(f"[SEND] #{self.next_seq} UNRELIABLE: {data[:30]}...")
-
-        self.next_seq = (self.next_seq + 1) % 65536
+            print(f"[SEND] U#{seq_no} UNRELIABLE: {data[:30]}...")
 
     def _receive_loop(self):
         """
@@ -101,7 +111,7 @@ class GameNetAPI:
                         ack_packet = GamePacket.create_ack(packet.seq_no)
                         self.socket.sendto(ack_packet.to_bytes(), addr)
                         self.metrics['acks_sent'] += 1
-                        print(f"[ACK] Sent ACK for packet #{packet.seq_no}")
+                        print(f"[ACK] Sent ACK for packet R#{packet.seq_no}")
 
                         # Add to reorder buffer
                         ready_packets = self.reorder_buffer.add_packet(packet.seq_no, packet)
@@ -113,7 +123,7 @@ class GameNetAPI:
                                 self.metrics['reliable_received'] += 1
                                 self.metrics['total_latency'] += latency
                                 self.metrics['latency_count'] += 1
-                                print(f"[RECV] #{p.seq_no} RELIABLE (ordered): {p.payload[:30]}... ({latency:.1f}ms)")
+                                print(f"[RECV] R#{p.seq_no} RELIABLE (ordered): {p.payload[:30]}... ({latency:.1f}ms)")
 
                     # Handle unreliable packets - deliver immediately
                     elif packet.channel_type == CHANNEL_UNRELIABLE:
@@ -122,7 +132,7 @@ class GameNetAPI:
                             self.metrics['unreliable_received'] += 1
                             self.metrics['total_latency'] += latency
                             self.metrics['latency_count'] += 1
-                            print(f"[RECV] #{packet.seq_no} UNRELIABLE: {packet.payload[:30]}... ({latency:.1f}ms)")
+                            print(f"[RECV] U#{packet.seq_no} UNRELIABLE: {packet.payload[:30]}... ({latency:.1f}ms)")
 
             except socket.timeout:
                 # Check for reorder timeout periodically
@@ -132,7 +142,7 @@ class GameNetAPI:
                         for p in timeout_packets:
                             self.receive_buffer.append(p)
                             self.metrics['reliable_received'] += 1
-                            print(f"[RECV] #{p.seq_no} RELIABLE (after timeout): {p.payload[:30]}...")
+                            print(f"[RECV] R#{p.seq_no} RELIABLE (after timeout): {p.payload[:30]}...")
                 continue
             except Exception as e:
                 if self.running:

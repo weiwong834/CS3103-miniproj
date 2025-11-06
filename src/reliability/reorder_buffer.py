@@ -43,7 +43,7 @@ class ReorderBuffer:
 
         # Check for timeout - skip missing packet if waiting too long
         if self.gap_start_time and (current_time - self.gap_start_time) >= REORDER_TIMEOUT:
-            print(f"[REORDER] Timeout waiting for packet #{self.expected_seq} "
+            print(f"[REORDER] Timeout waiting for packet R#{self.expected_seq} "
                   f"({REORDER_TIMEOUT*1000:.0f}ms threshold), skipping to continue")
             self.skipped_count += 1
             self.expected_seq = (self.expected_seq + 1) % 65536
@@ -72,7 +72,7 @@ class ReorderBuffer:
                 self.expected_seq = (self.expected_seq + 1) % 65536
                 self.delivered_count += 1
                 self.reordered_count += 1
-                print(f"[REORDER] Delivered buffered packet #{self.expected_seq - 1} after gap filled")
+                print(f"[REORDER] Delivered buffered packet R#{self.expected_seq - 1} after gap filled")
 
         # If packet is ahead of expected (out-of-order)
         elif self._is_ahead(seq_no):
@@ -80,17 +80,17 @@ class ReorderBuffer:
                 if seq_no not in self.buffer:  # Avoid duplicates
                     self.buffer[seq_no] = (packet, current_time)
                     gap = seq_no - self.expected_seq
-                    print(f"[REORDER] Buffering packet #{seq_no}, expecting #{self.expected_seq} (gap: {gap})")
+                    print(f"[REORDER] Buffering packet R#{seq_no}, expecting R#{self.expected_seq} (gap: {gap})")
 
                     # Start gap timer if not already started
                     if self.gap_start_time is None:
                         self.gap_start_time = current_time
             else:
-                print(f"[REORDER] Buffer full ({self.max_size}), dropping packet #{seq_no}")
+                print(f"[REORDER] Buffer full ({self.max_size}), dropping packet R#{seq_no}")
 
         # If packet is behind expected (late duplicate)
         else:
-            print(f"[REORDER] Ignoring late/duplicate packet #{seq_no}, expecting #{self.expected_seq}")
+            print(f"[REORDER] Ignoring late/duplicate packet R#{seq_no}, expecting R#{self.expected_seq}")
 
         return ready_packets
 
@@ -115,7 +115,7 @@ class ReorderBuffer:
         current_time = time.time()
 
         if self.gap_start_time and (current_time - self.gap_start_time) >= REORDER_TIMEOUT:
-            print(f"[REORDER] Timeout waiting for packet #{self.expected_seq} "
+            print(f"[REORDER] Timeout waiting for packet R#{self.expected_seq} "
                   f"({REORDER_TIMEOUT*1000:.0f}ms threshold), skipping to continue")
             self.skipped_count += 1
             self.expected_seq = (self.expected_seq + 1) % 65536
