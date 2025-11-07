@@ -7,10 +7,11 @@
   - Channel `1` = **Unreliable** (fire-and-forget)
 - ✅ **7-byte header**: `| ChannelType (1B) | SeqNo (2B) | Timestamp (4B) | Payload |`
 - ✅ **Reliability features** (Person 2):
-  - ACK system with RTT measurement
-  - Retransmission: 200ms timeout, max 3 retries
+  - ACK system with RTT measurement (uses reliable channel with "ACK:" prefix)
+  - Duplicate ACK mechanism for fast recovery (Selective Repeat)
+  - Retransmission: 150ms timeout, max 12 retries (13 total attempts)
   - Reordering buffer: delivers reliable packets **in-order**
-  - Buffer timeout: skips missing reliable packets after 200ms
+  - Buffer timeout: skips missing reliable packets after 2000ms
 - ✅ **Realistic game traffic** (Person 3):
   - Mock JSON payloads: `score_update`, `position`, `chat`, `state_save`
   - 30-second demo at ~20 packets/sec (meets spec: 10–100 pps)
@@ -28,12 +29,15 @@ python demos/demo_advanced.py
 # → Terminal B: sender (option 1)
 ```
 
-✅ You’ll see logs like:
+✅ You'll see logs like:
 
 ```
-[ACK] Received ACK for packet #5 (RTT: 12.3ms)
-[REORDER] Buffering packet #7, expecting #6...
-[RECV] #7 RELIABLE (ordered): {"type":"score_update",...} (18.2ms)
+[ACK] Received ACK for packet R#5 (RTT: 12.3ms)
+[REORDER] Buffering packet R#7, expecting R#6 (gap: 1)
+[DUP-ACK-SEND] Sent duplicate ACK for R#5
+[FAST-RETRANSMIT] Immediately retransmitting R#6 after 3 duplicate ACKs
+[RECV] R#6 RELIABLE (ordered): {"type":"position",...} (15.1ms)
+[RECV] R#7 RELIABLE (ordered): {"type":"score_update",...} (18.2ms)
 ```
 
 ---

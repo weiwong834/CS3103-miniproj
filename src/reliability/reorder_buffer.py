@@ -12,12 +12,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.constants import REORDER_BUFFER_SIZE, REORDER_TIMEOUT
 
 class ReorderBuffer:
-    def __init__(self, max_size: int = REORDER_BUFFER_SIZE):
+    def __init__(self, max_size: int = REORDER_BUFFER_SIZE, send_dup_ack_callback=None):
         """
-        Initialize reorder buffer for reliable packets
+        Initialize reorder buffer for reliable packets with duplicate ACK support
 
         Args:
             max_size: Maximum number of out-of-order packets to buffer
+            send_dup_ack_callback: Function to send duplicate ACK for last in-order packet
         """
         self.max_size = max_size
         self.expected_seq = 0  # Next expected sequence number
@@ -26,6 +27,9 @@ class ReorderBuffer:
         self.reordered_count = 0
         self.skipped_count = 0
         self.gap_start_time = None  # Track when we first noticed a gap
+        self.last_acked = -1  # Last in-order packet we ACKed
+        self.send_dup_ack = send_dup_ack_callback  # Callback for duplicate ACKs
+        self.dup_ack_count = 0  # Track duplicate ACKs sent
 
     def add_packet(self, seq_no: int, packet) -> List:
         """
@@ -63,6 +67,7 @@ class ReorderBuffer:
             self.expected_seq = (self.expected_seq + 1) % 65536
             self.delivered_count += 1
             self.gap_start_time = None  # Reset gap timer
+            self.last_acked = seq_no  # Track last in-order packet
 
             # Check if buffered packets are now ready
             while self.expected_seq in self.buffer:
@@ -85,6 +90,12 @@ class ReorderBuffer:
                     # Start gap timer if not already started
                     if self.gap_start_time is None:
                         self.gap_start_time = current_time
+
+                    # Send duplicate ACK for last in-order packet (Selective Repeat standard)
+                    if self.send_dup_ack and self.last_acked >= 0:
+                        self.send_dup_ack(self.last_acked)
+                        self.dup_ack_count += 1
+                        print(f"[DUP-ACK] Sent duplicate ACK for R#{self.last_acked} (gap detected at R#{seq_no})")
             else:
                 print(f"[REORDER] Buffer full ({self.max_size}), dropping packet R#{seq_no}")
 

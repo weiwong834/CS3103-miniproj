@@ -23,7 +23,11 @@ class GameNetAPI:
 
         # Reliability components
         self.reliable_channel = ReliableChannel(self.socket)
-        self.reorder_buffer = ReorderBuffer()
+        # Pass duplicate ACK sending callback to reorder buffer
+        self.reorder_buffer = ReorderBuffer(send_dup_ack_callback=self._send_dup_ack)
+
+        # Track last ACKed sequence for duplicate ACK detection
+        self.last_acked_seq = -1
 
         # Metrics
         self.metrics = {
@@ -79,6 +83,17 @@ class GameNetAPI:
             self.metrics['unreliable_sent'] += 1
             print(f"[SEND] U#{seq_no} UNRELIABLE: {data[:30]}...")
 
+    def _send_dup_ack(self, last_in_order_seq):
+        """
+        Send duplicate ACK for last in-order packet (Selective Repeat standard)
+
+        Args:
+            last_in_order_seq: Sequence number of last packet received in order
+        """
+        dup_ack_packet = GamePacket.create_ack(last_in_order_seq)
+        self.socket.sendto(dup_ack_packet.to_bytes(), (self.host, self.target_port))
+        print(f"[DUP-ACK-SEND] Sent duplicate ACK for R#{last_in_order_seq}")
+
     def _receive_loop(self):
         """
         Background thread for receiving packets and processing ACKs
@@ -95,19 +110,32 @@ class GameNetAPI:
                     if latency > 10000:  # If latency > 10 seconds, likely a timestamp issue
                         latency = 0  # Default to 0 for display
 
-                    # Handle ACK packets
+                    # Handle ACK packets (now part of reliable channel)
                     if packet.is_ack():
                         # Extract the acked sequence number from payload
                         try:
                             acked_seq = int(packet.payload.split(':')[1])
+
+
+                            # Check if this is a duplicate ACK
+                            if acked_seq == self.last_acked_seq:
+                                # Duplicate ACK - may trigger fast retransmit
+                                self.reliable_channel.handle_duplicate_ack(acked_seq)
+                            else:
+                                # New ACK - process normally
+                                self.reliable_channel.acknowledge(acked_seq)
+                                self.last_acked_seq = acked_seq
+
+
                             print(f"[LATENCY] ACK#{acked_seq}--- {latency} ms")
                             self.reliable_channel.acknowledge(acked_seq)
+
                             self.metrics['acks_received'] += 1
                         except:
                             print(f"[ACK] Invalid ACK format: {packet.payload}")
 
-                    # Handle reliable packets - send ACK and reorder
-                    elif packet.channel_type == CHANNEL_RELIABLE:
+                    # Handle reliable data packets (non-ACK)
+                    elif packet.channel_type == CHANNEL_RELIABLE and not packet.is_control_packet():
                         # Send ACK immediately
                         ack_packet = GamePacket.create_ack(packet.seq_no)
                         print(f"[LATENCY] PKT#{packet.seq_no}--- {latency} ms")

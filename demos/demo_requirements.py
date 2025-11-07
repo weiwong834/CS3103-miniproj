@@ -115,7 +115,7 @@ def test_all_features():
     print("\n" + "="*50)
     print("ALL FEATURES TESTED SUCCESSFULLY!")
     print("Features verified:")
-    print("  - ACK system (Channel Type 2)")
+    print("  - ACK system (using reliable channel with ACK: prefix)")
     print("  - Reliable vs Unreliable channels")
     print("  - Retransmission (200ms timeout)")
     print("  - Packet reordering")

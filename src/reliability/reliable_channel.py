@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.constants import RETRANSMIT_TIMEOUT, MAX_RETRANSMITS, CHANNEL_ACK
+from core.constants import RETRANSMIT_TIMEOUT, MAX_RETRANSMITS, DUP_ACK_THRESHOLD
 
 class PendingPacket:
     """Track a packet awaiting ACK"""
@@ -34,13 +34,17 @@ class ReliableChannel:
         self.pending_packets: Dict[int, PendingPacket] = {}
         self.lock = threading.Lock()
 
+        # Duplicate ACK tracking for fast retransmit
+        self.dup_ack_count: Dict[int, int] = {}  # {seq_no: duplicate_count}
+
         # Statistics
         self.stats = {
             'sent': 0,
             'acked': 0,
             'retransmitted': 0,
             'failed': 0,
-            'total_retries': 0
+            'total_retries': 0,
+            'fast_retransmits': 0
         }
 
         # Start retransmission timer thread
@@ -78,6 +82,60 @@ class ReliableChannel:
                     print(f"[ACK] Received ACK for packet R#{seq_no} (RTT: {rtt:.1f}ms)")
                     # Remove from pending
                     del self.pending_packets[seq_no]
+                    # Clear duplicate ACK count for this sequence
+                    if seq_no in self.dup_ack_count:
+                        del self.dup_ack_count[seq_no]
+            else:
+                # This might be a duplicate ACK for an already acknowledged packet
+                # Don't call handle_duplicate_ack here - it should be called from game_net_api
+                pass
+
+    def handle_duplicate_ack(self, ack_seq_no: int):
+        """
+        Handle duplicate ACK - may trigger fast retransmit if threshold reached
+        Duplicate ACKs indicate the receiver got an out-of-order packet
+
+        Args:
+            ack_seq_no: Sequence number being ACKed again (last in-order packet)
+        """
+        with self.lock:
+            # Track duplicate ACK count
+            if ack_seq_no not in self.dup_ack_count:
+                self.dup_ack_count[ack_seq_no] = 0
+
+            self.dup_ack_count[ack_seq_no] += 1
+            dup_count = self.dup_ack_count[ack_seq_no]
+
+            print(f"[DUP-ACK] Received duplicate ACK #{dup_count} for R#{ack_seq_no}")
+
+            # Fast retransmit after DUP_ACK_THRESHOLD duplicate ACKs
+            if dup_count >= DUP_ACK_THRESHOLD:
+                # The missing packet is likely ack_seq_no + 1
+                missing_seq = (ack_seq_no + 1) % 65536
+
+                if missing_seq in self.pending_packets:
+                    packet = self.pending_packets[missing_seq]
+                    if not packet.acked and packet.retry_count < MAX_RETRANSMITS:
+                        # Fast retransmit - immediately retransmit without waiting for timeout
+                        self.socket.sendto(packet.packet_data, packet.destination)
+                        packet.retry_count += 1
+                        packet.send_time = time.time()  # Reset timer
+                        self.stats['fast_retransmits'] += 1
+                        self.stats['retransmitted'] += 1
+                        self.stats['total_retries'] += 1
+
+                        # Reset duplicate ACK count after fast retransmit
+                        self.dup_ack_count[ack_seq_no] = 0
+
+                        print(f"[FAST-RETRANSMIT] Immediately retransmitting R#{missing_seq} "
+                              f"after {DUP_ACK_THRESHOLD} duplicate ACKs "
+                              f"(attempt {packet.retry_count}/{MAX_RETRANSMITS})")
+                    elif packet.acked:
+                        print(f"[DUP-ACK] Packet R#{missing_seq} already ACKed, ignoring")
+                    else:
+                        print(f"[DUP-ACK] Max retransmits reached for R#{missing_seq}")
+                else:
+                    print(f"[DUP-ACK] Missing packet R#{missing_seq} not in pending list")
 
     def _retransmission_timer(self):
         """
