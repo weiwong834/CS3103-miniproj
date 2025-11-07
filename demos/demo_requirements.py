@@ -60,7 +60,7 @@ def test_all_features():
         receiver = GameNetAPI(port=8889, target_port=9998)
         received_packets = []
 
-        for _ in range(30):  # Receive for a while
+        for _ in range(50):  # Extended to allow all ACKs to be sent back
             packet = receiver.receive()
             if packet:
                 received_packets.append(packet.seq_no)
@@ -90,7 +90,7 @@ def test_all_features():
             sender.send(f"Rapid packet {i}", reliable=True)
             time.sleep(0.001)  # Very small delay
 
-        time.sleep(1.5)  # Wait for ACKs and possible retransmissions
+        time.sleep(2.5)  # Wait longer for all ACKs and retransmissions
 
         metrics = sender.get_metrics()
         print(f"\n[TEST] Sender metrics:")

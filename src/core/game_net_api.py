@@ -137,7 +137,7 @@ class GameNetAPI:
                         # Send ACK immediately
                         ack_packet = GamePacket.create_ack(packet.seq_no)
                         print(f"[LATENCY] PKT#{packet.seq_no}--- {latency} ms")
-                        self.socket.sendto(ack_packet.to_bytes(), addr)
+                        self.socket.sendto(ack_packet.to_bytes(), (self.host, self.target_port))
                         self.metrics['acks_sent'] += 1
                         print(f"[ACK] Sent ACK for packet R#{packet.seq_no}")
 
