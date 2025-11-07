@@ -7,7 +7,7 @@ class GamePacket:
         self.seq_no = seq_no
         self.payload = payload
         if timestamp is None:
-            self.timestamp = int(time.time())
+            self.timestamp = int(time.time() * 1000)
         else:
             self.timestamp = timestamp
 

@@ -1,8 +1,11 @@
 import sys
 import os
+
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from emulator.emulator import Emulator
+from src.apps.emulator_options import E1_PACKETLOSS, E1_DELAY, E1_JITTER, E2_PACKETLOSS, E2_DELAY, E2_JITTER
 from src.core.game_net_api import GameNetAPI
 import time
 import threading
@@ -49,8 +52,12 @@ def test_all_features():
     print("TESTING ALL RELIABILITY FEATURES")
     print("="*50)
 
+    def start_emulator(listen_port, forward_host, target_port, loss_rate, base_delay, jitter):
+        emulator = Emulator(listen_port, forward_host, target_port, loss_rate, base_delay, jitter)
+        emulator.start()
+
     def test_receiver():
-        receiver = GameNetAPI(port=8889, target_port=8888)
+        receiver = GameNetAPI(port=8889, target_port=9998)
         received_packets = []
 
         for _ in range(30):  # Receive for a while
@@ -64,11 +71,12 @@ def test_all_features():
         print(f"[TEST] Receiver metrics:")
         print(f"  - ACKs sent: {metrics['acks_sent']}")
         print(f"  - Packets reordered: {metrics.get('packets_reordered', 0)}")
+        print(f"  - Average latency: {metrics.get('avg_latency')}")
         receiver.close()
 
     def test_sender():
         time.sleep(0.5)  # Let receiver start
-        sender = GameNetAPI(port=8888, target_port=8889)
+        sender = GameNetAPI(port=8888, target_port=9999)
 
         # Test 1: Reliable vs Unreliable
         print("\n[TEST] Sending reliable and unreliable packets...")
@@ -95,12 +103,14 @@ def test_all_features():
     # Run test with threads
     receiver_thread = threading.Thread(target=test_receiver)
     sender_thread = threading.Thread(target=test_sender)
+    e1_thread = threading.Thread(target=start_emulator, args=(9999, "localhost", 8889, E1_PACKETLOSS, E1_DELAY, E1_JITTER)).start()
+    e2_thread = threading.Thread(target=start_emulator, args=(9998, "localhost", 8888, E2_PACKETLOSS, E2_DELAY, E2_JITTER)).start()
 
     receiver_thread.start()
     sender_thread.start()
 
-    receiver_thread.join()
-    sender_thread.join()
+    #receiver_thread.join()
+    #sender_thread.join()
 
     print("\n" + "="*50)
     print("ALL FEATURES TESTED SUCCESSFULLY!")

@@ -105,7 +105,7 @@ class GameNetAPI:
 
                 if packet:
                     # Calculate latency (current time - packet timestamp)
-                    current_time_ms = int(time.time() * 1000)
+                    current_time_ms = int(time.time() * 1000) & 0xFFFFFFFF
                     latency = max(0, current_time_ms - packet.timestamp)
                     if latency > 10000:  # If latency > 10 seconds, likely a timestamp issue
                         latency = 0  # Default to 0 for display
@@ -116,6 +116,7 @@ class GameNetAPI:
                         try:
                             acked_seq = int(packet.payload.split(':')[1])
 
+
                             # Check if this is a duplicate ACK
                             if acked_seq == self.last_acked_seq:
                                 # Duplicate ACK - may trigger fast retransmit
@@ -125,6 +126,10 @@ class GameNetAPI:
                                 self.reliable_channel.acknowledge(acked_seq)
                                 self.last_acked_seq = acked_seq
 
+
+                            print(f"[LATENCY] ACK#{acked_seq}--- {latency} ms")
+                            self.reliable_channel.acknowledge(acked_seq)
+
                             self.metrics['acks_received'] += 1
                         except:
                             print(f"[ACK] Invalid ACK format: {packet.payload}")
@@ -133,7 +138,8 @@ class GameNetAPI:
                     elif packet.channel_type == CHANNEL_RELIABLE and not packet.is_control_packet():
                         # Send ACK immediately
                         ack_packet = GamePacket.create_ack(packet.seq_no)
-                        self.socket.sendto(ack_packet.to_bytes(), addr)
+                        print(f"[LATENCY] PKT#{packet.seq_no}--- {latency} ms")
+                        self.socket.sendto(ack_packet.to_bytes(), ("localhost", 9998))
                         self.metrics['acks_sent'] += 1
                         print(f"[ACK] Sent ACK for packet R#{packet.seq_no}")
 
