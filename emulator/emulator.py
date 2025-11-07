@@ -5,7 +5,7 @@ import threading
 
 class Emulator:
     def __init__(self, listen_port, forward_host, forward_port,
-                 loss_rate=0.05, base_delay=0.05, jitter=0.01):
+                 loss_rate=0.3, base_delay=0.05, jitter=0.01):
         self.listen_port = listen_port
         self.forward_host = forward_host
         self.forward_port = forward_port

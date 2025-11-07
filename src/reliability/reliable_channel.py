@@ -19,6 +19,7 @@ class PendingPacket:
         self.seq_no = seq_no
         self.destination = destination
         self.send_time = time.time()
+        self.first_send_time = time.time()  # Track original send time for true latency
         self.retry_count = 0
         self.acked = False
 
@@ -71,24 +72,30 @@ class ReliableChannel:
 
         Args:
             seq_no: Sequence number of ACKed packet
+
+        Returns:
+            total_latency: End-to-end latency in ms (from first send to ACK)
         """
         with self.lock:
             if seq_no in self.pending_packets:
                 packet = self.pending_packets[seq_no]
                 if not packet.acked:
                     packet.acked = True
-                    rtt = (time.time() - packet.send_time) * 1000
+                    rtt = (time.time() - packet.send_time) * 1000  # Last attempt RTT
+                    total_latency = (time.time() - packet.first_send_time) * 1000  # True end-to-end
                     self.stats['acked'] += 1
-                    print(f"[ACK] Received ACK for packet R#{seq_no} (RTT: {rtt:.1f}ms)")
+                    print(f"[ACK] Received ACK for packet R#{seq_no} (RTT: {rtt:.1f}ms, Total: {total_latency:.1f}ms)")
                     # Remove from pending
                     del self.pending_packets[seq_no]
                     # Clear duplicate ACK count for this sequence
                     if seq_no in self.dup_ack_count:
                         del self.dup_ack_count[seq_no]
+                    return total_latency
             else:
                 # This might be a duplicate ACK for an already acknowledged packet
                 # Don't call handle_duplicate_ack here - it should be called from game_net_api
                 pass
+        return None
 
     def handle_duplicate_ack(self, ack_seq_no: int):
         """
